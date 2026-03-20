@@ -2,41 +2,72 @@
 import time
 import json
 import paho.mqtt.client as mqtt
-import config
+import system_config
+
+# --- SIMULATOR SETTINGS ---
+SIM_AMBULANCE_ID = "AMB_01"
+SIM_ROUTE = ["N1", "N2", "N3", "N4"]  # The path the "toy car" will follow
 
 def on_connect(client, userdata, flags, reason_code, properties):
-    print("[SIMULATOR] Connected to Broker.")
-    # Act as the traffic lights listening for commands
-    client.subscribe("traffic/control/#")
+    print(f"✅ [SIMULATOR] Connected to Broker at {system_config.MQTT_BROKER}")
+    # Subscribe to the traffic control topic to act as the ESP8266 Traffic Lights
+    client.subscribe(f"{system_config.TOPIC_LIGHT_CONTROL}#")
 
 def on_message(client, userdata, msg):
-    print(f"[SIMULATOR - ESP8266 Light] {msg.topic} -> {msg.payload.decode()}")
+    """Mimics the ESP8266 Traffic Light receiving a command."""
+    try:
+        payload = json.loads(msg.payload.decode())
+        node_id = msg.topic.split("/")[-1]
+        state = payload.get("state")
+        target = payload.get("target_amb")
+        
+        print(f"🚥 [VIRTUAL LIGHT @ {node_id}] Command Received: {state} for {target}")
+    except Exception as e:
+        print(f"❌ [SIMULATOR] Error parsing light command: {e}")
 
-client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "HardwareSimulator")
+# 1. Setup the Simulator Client
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "Hardware_Simulator_Node")
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect(config.MQTT_BROKER, config.MQTT_PORT, 60)
+
+print("🚀 [SIMULATOR] Starting Hardware Emulation...")
+client.connect(system_config.MQTT_BROKER, system_config.MQTT_PORT, 60)
 client.loop_start()
 
-time.sleep(1)
+time.sleep(1)  # Wait for connection to stabilize
 
-# 1. Simulate Ambulance pressing the "High Priority" button
-print("\n--- Simulating Ambulance Request ---")
-req_payload = json.dumps({"id": "AMB_01", "priority": 1, "dest": "H1"})
-client.publish(config.TOPIC_AMB_REQUEST, req_payload)
-time.sleep(2)
+# 2. Step 1: Simulate the "Distress Button" press on the ESP32 Ambulance
+print("\n--- 🚨 ACTION: Ambulance sends Emergency Request ---")
+request_payload = {
+    "id": SIM_AMBULANCE_ID,
+    "priority": 1,
+    "dest": "H1"
+}
+client.publish(system_config.TOPIC_AMB_REQUEST, json.dumps(request_payload))
+print(f"Sent: {request_payload} to {system_config.TOPIC_AMB_REQUEST}")
 
-# 2. Simulate Ambulance driving through the physical board nodes
-route_simulation = ["N1", "N2", "N3", "N4"]
-
-for node in route_simulation:
-    print(f"\n--- Simulating Ambulance Arriving at {node} ---")
-    loc_payload = json.dumps({"id": "AMB_01", "node": node})
-    client.publish(config.TOPIC_AMB_LOCATION, loc_payload)
+# 3. Step 2: Simulate moving the toy car through the map
+# Each step simulates the car being moved by hand and triggering a location update.
+for current_node in SIM_ROUTE:
+    print(f"\n--- 📍 ACTION: Ambulance enters {current_node} ---")
     
-    # Wait to observe the server processing the route and sending light commands
-    time.sleep(3)
+    location_payload = {
+        "id": SIM_AMBULANCE_ID,
+        "node": current_node
+    }
+    client.publish(system_config.TOPIC_AMB_LOCATION, json.dumps(location_payload))
+    
+    # Observe the server's output in the other terminal. 
+    # It should calculate the path and send commands to the NEXT nodes in SIM_ROUTE.
+    time.sleep(4) 
 
-print("\n[SIMULATOR] Simulation complete. Press Ctrl+C to exit.")
-while True:
-    time.sleep(1)
+print("\n🏁 [SIMULATOR] Route Complete. Ambulance has arrived at Hospital.")
+print("Press Ctrl+C to stop emulation.")
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\nStopping Simulator...")
+    client.loop_stop()
+    client.disconnect()

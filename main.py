@@ -1,7 +1,7 @@
 # main.py
 import time
 import threading
-import config
+import system_config
 from routing_engine import RoutingEngine
 from mqtt_handler import MQTTHandler
 
@@ -43,10 +43,10 @@ def server_loop(state_manager, routing_engine, mqtt_handler):
             for node in lookahead_nodes:
                 mqtt_handler.send_light_command(node, "PREEMPT_GREEN", amb_id)
                 
-        time.sleep(config.TICK_RATE)
+        time.sleep(system_config.TICK_RATE)
 
 if __name__ == "__main__":
-    routing = RoutingEngine(config.CITY_EDGES, config.HOSPITALS)
+    routing = RoutingEngine(system_config.CITY_EDGES, system_config.HOSPITALS)
     state = StateManager(routing)
     mqtt = MQTTHandler(state)
     

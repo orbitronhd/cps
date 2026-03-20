@@ -1,7 +1,7 @@
 # mqtt_handler.py
 import json
 import paho.mqtt.client as mqtt
-import config
+import system_config
 
 class MQTTHandler:
     def __init__(self, state_manager):
@@ -12,9 +12,9 @@ class MQTTHandler:
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
         print(f"[MQTT] Connected. Code: {reason_code}")
-        client.subscribe(config.TOPIC_TRAFFIC_UPDATE)
-        client.subscribe(config.TOPIC_AMB_REQUEST)
-        client.subscribe(config.TOPIC_AMB_LOCATION)
+        client.subscribe(system_config.TOPIC_TRAFFIC_UPDATE)
+        client.subscribe(system_config.TOPIC_AMB_REQUEST)
+        client.subscribe(system_config.TOPIC_AMB_LOCATION)
 
     def on_message(self, client, userdata, msg):
         try:
@@ -26,12 +26,12 @@ class MQTTHandler:
                 if len(edge) == 2:
                     self.state_manager.update_traffic(edge[0], edge[1], payload.get("density", 1.0))
                     
-            elif topic == config.TOPIC_AMB_REQUEST:
+            elif topic == system_config.TOPIC_AMB_REQUEST:
                 self.state_manager.register_ambulance(
                     payload["id"], payload["priority"], payload["dest"]
                 )
                 
-            elif topic == config.TOPIC_AMB_LOCATION:
+            elif topic == system_config.TOPIC_AMB_LOCATION:
                 self.state_manager.update_ambulance_location(
                     payload["id"], payload["node"]
                 )
@@ -40,8 +40,8 @@ class MQTTHandler:
 
     def send_light_command(self, node, state, target_amb):
         payload = json.dumps({"state": state, "target_amb": target_amb})
-        self.client.publish(f"{config.TOPIC_LIGHT_CONTROL}{node}", payload)
+        self.client.publish(f"{system_config.TOPIC_LIGHT_CONTROL}{node}", payload)
 
     def start(self):
-        self.client.connect(config.MQTT_BROKER, config.MQTT_PORT, 60)
+        self.client.connect(system_config.MQTT_BROKER, system_config.MQTT_PORT, 60)
         self.client.loop_start()
