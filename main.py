@@ -1,42 +1,52 @@
-import time
-import threading
-import system_config
-from routing_engine import RoutingEngine
-from mqtt_handler import MQTTHandler
+import paho.mqtt.client as mqtt
+import json
 
-class StateManager:
-    def __init__(self, routing_engine):
-        self.routing = routing_engine
-        self.ambulances = {}
-        self.lock = threading.Lock()
+# Configuration
+MQTT_BROKER = "localhost" 
+MQTT_PORT = 1883
+MQTT_TOPIC = "ambulance/routing"
 
-    def register_ambulance(self, amb_id, priority, dest):
-        with self.lock:
-            if amb_id not in self.ambulances: self.ambulances[amb_id] = {"pos": None}
-            self.ambulances[amb_id].update({"priority": priority, "dest": dest})
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("[MQTT] Server Connected to Broker.")
+        # Subscribe to the topic the exact moment we connect
+        client.subscribe(MQTT_TOPIC)
+        print(f"[SERVER] Listening for preemption requests on '{MQTT_TOPIC}'...\n")
+    else:
+        print(f"[MQTT] Connection failed with code {rc}")
 
-    def update_ambulance_location(self, amb_id, node):
-        with self.lock:
-            if amb_id in self.ambulances: self.ambulances[amb_id]["pos"] = node
-
-    def get_ambulances(self):
-        with self.lock: return dict(self.ambulances)
-
-def server_loop(state_manager, routing_engine, mqtt_handler):
-    print("[SERVER] Core Routing Loop Active...")
-    while True:
-        ambulances = state_manager.get_ambulances()
-        routes = routing_engine.calculate_active_routes(ambulances)
+def on_message(client, userdata, msg):
+    # Decode the raw byte payload into a string
+    payload_str = msg.payload.decode('utf-8')
+    
+    try:
+        # Parse the JSON data sent by the ESP32
+        data = json.loads(payload_str)
         
-        for amb_id, path in routes.items():
-            if len(path) > 1:
-                next_node = path[1] # Look 1 node ahead for immediate preempt
-                mqtt_handler.send_light_command(next_node, "PREEMPT_GREEN", amb_id)
-        time.sleep(system_config.TICK_RATE)
+        # Display the update in a clean, readable format
+        print("🚨 INCOMING PREEMPTION REQUEST 🚨")
+        print(f"   Ambulance ID : {data.get('ambulance_id', 'UNKNOWN')}")
+        print(f"   Priority Lvl : {data.get('priority', 'UNKNOWN')}")
+        print(f"   Action       : {data.get('action', 'NONE')}")
+        print("-" * 35)
+        
+        # Future Step: This is where you will add the logic to send 
+        # the "PREEMPT_GREEN" command to the traffic lights.
+        
+    except json.JSONDecodeError:
+        print(f"[ERROR] Received malformed JSON from ESP32: {payload_str}")
 
-if __name__ == "__main__":
-    routing = RoutingEngine(system_config.CITY_EDGES, system_config.HOSPITALS)
-    state = StateManager(routing)
-    mqtt = MQTTHandler(state)
-    mqtt.start()
-    server_loop(state, routing, mqtt)
+# Setup the MQTT client
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
+
+print("[SERVER] Core Routing Loop Active...")
+
+try:
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    # Block and keep the server running forever to listen for messages
+    client.loop_forever()
+except KeyboardInterrupt:
+    print("\n[SERVER] Shutting down...")
+    client.disconnect()
