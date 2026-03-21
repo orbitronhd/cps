@@ -16,26 +16,33 @@ def on_connect(client, userdata, flags, rc):
         print(f"[MQTT] Connection failed with code {rc}")
 
 def on_message(client, userdata, msg):
-    # Decode the raw byte payload into a string
     payload_str = msg.payload.decode('utf-8')
     
     try:
-        # Parse the JSON data sent by the ESP32
         data = json.loads(payload_str)
+        action = data.get('action', 'NONE')
         
-        # Display the update in a clean, readable format
-        print("🚨 INCOMING PREEMPTION REQUEST 🚨")
-        print(f"   Ambulance ID : {data.get('ambulance_id', 'UNKNOWN')}")
-        print(f"   Priority Lvl : {data.get('priority', 'UNKNOWN')}")
-        print(f"   Action       : {data.get('action', 'NONE')}")
-        print("-" * 35)
-        
-        # Future Step: This is where you will add the logic to send 
-        # the "PREEMPT_GREEN" command to the traffic lights.
-        
+        if action == "REQUEST_PREEMPTION":
+            amb_id = data.get('ambulance_id', 'UNKNOWN')
+            priority = data.get('priority', 2)
+            
+            # 1. Print the update in the server terminal
+            print("🚨 INCOMING PREEMPTION REQUEST 🚨")
+            print(f"   Ambulance ID : {amb_id}")
+            print(f"   Priority Lvl : {priority}")
+            print("-" * 35)
+            print(f"[SERVER] Routing {amb_id} to Hospital 01...")
+            
+            # 2. Forward the command to the Hospital ESP-12E
+            hosp_payload = json.dumps({
+                "action": "INCOMING_PATIENT",
+                "priority": priority
+            })
+            client.publish("hospital/alerts/HOSP_01", hosp_payload)
+            print("[SERVER] Dispatch sent to Hospital Node.\n")
+            
     except json.JSONDecodeError:
-        print(f"[ERROR] Received malformed JSON from ESP32: {payload_str}")
-
+        print(f"[ERROR] Malformed JSON: {payload_str}")
 # Setup the MQTT client
 client = mqtt.Client()
 client.on_connect = on_connect
