@@ -1,4 +1,3 @@
-# mqtt_handler.py
 import json
 import paho.mqtt.client as mqtt
 import system_config
@@ -11,32 +10,19 @@ class MQTTHandler:
         self.client.on_message = self.on_message
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
-        print(f"[MQTT] Connected. Code: {reason_code}")
-        client.subscribe(system_config.TOPIC_TRAFFIC_UPDATE)
+        print("[MQTT] Server Connected to Broker.")
         client.subscribe(system_config.TOPIC_AMB_REQUEST)
         client.subscribe(system_config.TOPIC_AMB_LOCATION)
 
     def on_message(self, client, userdata, msg):
         try:
             payload = json.loads(msg.payload.decode())
-            topic = msg.topic
-
-            if topic.startswith("sensors/traffic/"):
-                edge = topic.split("/")[-1].split("-")
-                if len(edge) == 2:
-                    self.state_manager.update_traffic(edge[0], edge[1], payload.get("density", 1.0))
-                    
-            elif topic == system_config.TOPIC_AMB_REQUEST:
-                self.state_manager.register_ambulance(
-                    payload["id"], payload["priority"], payload["dest"]
-                )
-                
-            elif topic == system_config.TOPIC_AMB_LOCATION:
-                self.state_manager.update_ambulance_location(
-                    payload["id"], payload["node"]
-                )
+            if msg.topic == system_config.TOPIC_AMB_REQUEST:
+                self.state_manager.register_ambulance(payload["id"], payload["priority"], payload["dest"])
+            elif msg.topic == system_config.TOPIC_AMB_LOCATION:
+                self.state_manager.update_ambulance_location(payload["id"], payload["node"])
         except Exception as e:
-            print(f"[MQTT] Payload error on {msg.topic}: {e}")
+            print(f"[MQTT Error] {e}")
 
     def send_light_command(self, node, state, target_amb):
         payload = json.dumps({"state": state, "target_amb": target_amb})

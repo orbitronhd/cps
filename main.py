@@ -1,4 +1,3 @@
-# main.py
 import time
 import threading
 import system_config
@@ -11,44 +10,33 @@ class StateManager:
         self.ambulances = {}
         self.lock = threading.Lock()
 
-    def update_traffic(self, node_a, node_b, weight):
-        self.routing.update_edge_weight(node_a, node_b, weight)
-
     def register_ambulance(self, amb_id, priority, dest):
         with self.lock:
-            if amb_id not in self.ambulances:
-                self.ambulances[amb_id] = {"pos": None}
+            if amb_id not in self.ambulances: self.ambulances[amb_id] = {"pos": None}
             self.ambulances[amb_id].update({"priority": priority, "dest": dest})
 
     def update_ambulance_location(self, amb_id, node):
         with self.lock:
-            if amb_id in self.ambulances:
-                self.ambulances[amb_id]["pos"] = node
+            if amb_id in self.ambulances: self.ambulances[amb_id]["pos"] = node
 
     def get_ambulances(self):
-        with self.lock:
-            return dict(self.ambulances)
+        with self.lock: return dict(self.ambulances)
 
 def server_loop(state_manager, routing_engine, mqtt_handler):
-    print("[SERVER] Logic loop running...")
+    print("[SERVER] Core Routing Loop Active...")
     while True:
         ambulances = state_manager.get_ambulances()
         routes = routing_engine.calculate_active_routes(ambulances)
         
         for amb_id, path in routes.items():
-            print(f"[ROUTING] Amb {amb_id} Path: {path}")
-            
-            # Send Green Wave 2 signals ahead
-            lookahead_nodes = path[1:3]
-            for node in lookahead_nodes:
-                mqtt_handler.send_light_command(node, "PREEMPT_GREEN", amb_id)
-                
+            if len(path) > 1:
+                next_node = path[1] # Look 1 node ahead for immediate preempt
+                mqtt_handler.send_light_command(next_node, "PREEMPT_GREEN", amb_id)
         time.sleep(system_config.TICK_RATE)
 
 if __name__ == "__main__":
     routing = RoutingEngine(system_config.CITY_EDGES, system_config.HOSPITALS)
     state = StateManager(routing)
     mqtt = MQTTHandler(state)
-    
     mqtt.start()
     server_loop(state, routing, mqtt)
